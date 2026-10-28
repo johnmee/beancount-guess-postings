@@ -1,0 +1,20 @@
+pushtag #alice
+
+2025-01-02 * "Example Cafe" "EXAMPLE CAFE, SYDNEY"   ;lunch with a friend
+  Assets:Bank:Alice-Everyday  -9.00 AUD
+
+2025-01-05 * "Metro Transit" "METRO TRANSIT OP, CITY" #bus #alice
+  Assets:Bank:Alice-Everyday    -4.00 AUD
+
+2025-01-08 * "Sample Bakery" "SAMPLE BAKERY, SYDNEY"
+  Assets:Bank:Alice-Everyday  -3.50 AUD
+
+2025-01-09 * "Widget Coffee Roasters" "WIDGET COFFEE ROASTERS, SYDNEY"  #bob
+  Assets:Bank:Alice-Everyday  -6.50 AUD
+
+poptag #alice
+
+2025-01-10 * "Example Liquor" "EXAMPLE LIQUOR 0001, SYDNEY" #something
+  Assets:Bank:Alice-Everyday  -12.00 AUD
+
+2025-01-11 balance Assets:Bank:Alice-Everyday 		 100.00 AUD
