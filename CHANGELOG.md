@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- An import with no transactions no longer prints a `; Nothing to import.`
+  comment; only its other directives, if any, are output.
+
 ## 0.1.0
 
 First release, extracted from `aussie-bean-tools`.

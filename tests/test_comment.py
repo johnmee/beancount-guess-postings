@@ -83,3 +83,22 @@ def test_the_command_filters_standard_input():
     assert result.exit_code == 0
     assert result.output.startswith(";2026-05-27")
     assert UNRELATED in result.output
+
+
+def test_the_command_passes_unrelated_input_through_unchanged():
+    text = f"{UNRELATED}\n\n2026-05-29 balance Assets:Bank:Joint-Everyday 1.00 AUD\n"
+    result = CliRunner().invoke(comment_cli, ACCOUNTS, input=text)
+    assert result.exit_code == 0
+    assert result.output == text
+
+
+def test_the_command_requires_an_account():
+    result = CliRunner().invoke(comment_cli, [], input=UNRELATED)
+    assert result.exit_code == 2
+    assert "ACCOUNTS" in result.output
+
+
+def test_the_command_help_names_the_command():
+    result = CliRunner().invoke(comment_cli, ["--help"], prog_name=comment_cli.name)
+    assert result.exit_code == 0
+    assert "Usage: guess-postings-comment" in result.output

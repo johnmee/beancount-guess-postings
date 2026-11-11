@@ -88,11 +88,10 @@ def fill(
 
     # Nothing to complete: the import has no transactions. This happens when the
     # source had no in-range rows, or every row was a duplicate the extractor
-    # commented out, leaving only balance directives. Emit a comment marker plus
-    # any remaining directives (e.g. balances) so the output stays valid
-    # beancount when appended to the ledger, and skip fuzzy matching.
+    # commented out, leaving only balance directives. Pass any remaining
+    # directives (e.g. balances) through unchanged and skip fuzzy matching, so
+    # appending the output adds nothing but them.
     if target_account is None:
-        print("; Nothing to import.")
         for entry in importing:
             printer.print_entry(entry)
         return

@@ -1,4 +1,5 @@
 import datetime
+from importlib.metadata import entry_points
 from pathlib import Path
 
 from beancount.core import amount, data
@@ -73,15 +74,27 @@ def test_fill_with_no_past_transactions_for_the_account_leaves_everything_alone(
     assert "Expenses" not in out
 
 
-def test_fill_with_nothing_to_import_emits_a_marker_not_a_crash(tmp_path, capsys):
+def test_fill_with_nothing_to_import_passes_the_rest_through(tmp_path, capsys):
     # An import file with a balance directive but no transactions (say every row
-    # was a duplicate the extractor commented out). It must stay valid beancount.
+    # was a duplicate the extractor commented out). Only the balance comes out.
     incoming = tmp_path / "only-balance.beancount"
     incoming.write_text("2026-05-31 balance Assets:Bank:Saver  100.00 AUD\n")
     fill(TRAINING, str(incoming))
     out = capsys.readouterr().out
-    assert "; Nothing to import." in out
-    assert "balance Assets:Bank:Saver" in out
+    assert out.split() == [
+        "2026-05-31",
+        "balance",
+        "Assets:Bank:Saver",
+        "100.00",
+        "AUD",
+    ]
+
+
+def test_fill_with_an_empty_import_prints_nothing(tmp_path, capsys):
+    incoming = tmp_path / "empty.beancount"
+    incoming.write_text(";; -*- mode: beancount -*-\n")
+    fill(TRAINING, str(incoming))
+    assert capsys.readouterr().out == ""
 
 
 def test_best_match_scores_out_of_100_as_a_whole_number():
@@ -165,3 +178,64 @@ def test_cli_strips_the_tags_it_is_told_to():
 
     assert transit_line(kept.output).endswith("#alice #bus")
     assert transit_line(stripped.output).endswith("#bus")
+
+
+def test_cli_completes_a_matching_transaction():
+    result = CliRunner().invoke(fill_cli, ["--training", TRAINING, INCOMING])
+    assert result.exit_code == 0
+    assert "Expenses:Food:Eatout" in result.output
+
+
+def test_cli_with_the_highest_threshold_completes_nothing():
+    result = CliRunner().invoke(
+        fill_cli, ["--training", TRAINING, "--threshold", "100", INCOMING]
+    )
+    assert result.exit_code == 0
+    assert "Expenses:" not in result.output
+    assert "Example Cafe" in result.output
+
+
+def test_cli_rejects_a_threshold_that_is_not_a_whole_number():
+    result = CliRunner().invoke(
+        fill_cli, ["--training", TRAINING, "--threshold", "high", INCOMING]
+    )
+    assert result.exit_code == 2
+    assert "--threshold" in result.output
+
+
+def test_cli_rejects_a_training_ledger_that_does_not_exist(tmp_path):
+    missing = str(tmp_path / "missing.beancount")
+    result = CliRunner().invoke(fill_cli, ["--training", missing, INCOMING])
+    assert result.exit_code == 2
+    assert "--training" in result.output
+
+
+def test_cli_rejects_an_import_file_that_does_not_exist(tmp_path):
+    missing = str(tmp_path / "missing.beancount")
+    result = CliRunner().invoke(fill_cli, ["--training", TRAINING, missing])
+    assert result.exit_code == 2
+    assert "INFILE" in result.output
+
+
+def test_cli_requires_an_import_file():
+    result = CliRunner().invoke(fill_cli, ["--training", TRAINING])
+    assert result.exit_code == 2
+    assert "INFILE" in result.output
+
+
+def test_cli_help_names_the_command():
+    result = CliRunner().invoke(fill_cli, ["--help"], prog_name=fill_cli.name)
+    assert result.exit_code == 0
+    assert "Usage: guess-postings [OPTIONS] INFILE" in result.output
+
+
+def test_the_commands_are_installed_under_their_names():
+    scripts = {
+        ep.name: ep.value
+        for ep in entry_points(group="console_scripts")
+        if ep.value.startswith("beancount_guess_postings.")
+    }
+    assert scripts == {
+        "guess-postings": "beancount_guess_postings.cli:fill_cli",
+        "guess-postings-comment": "beancount_guess_postings.cli:comment_cli",
+    }

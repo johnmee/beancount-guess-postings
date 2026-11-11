@@ -40,6 +40,7 @@ Usage: guess-postings [OPTIONS] INFILE
 
 Options:
   --threshold INTEGER  Only use fuzz scores better than this.  [default: 86]
+                       Lower the number to fill in more matches with less confident guesses
   --training PATH      Beancount file to use as a template for predictions;
                        usually your main ledger.  [required]
   --strip-tag TEXT     Leave this tag off completed entries, even if the
@@ -57,8 +58,8 @@ How it decides:
 - A match must score **above `--threshold`** (out of 100) to be used. Raise it to
   be more cautious; lower it to complete more.
 - If `INFILE` has no transactions at all (say every row was a duplicate), the
-  output is the comment `; Nothing to import.` followed by whatever else was in
-  the file, so it is still safe to append to a ledger.
+  output is whatever else was in the file, such as `balance` directives, and
+  nothing at all if there was nothing else.
 
 ### Tags and `--strip-tag`
 
@@ -71,11 +72,9 @@ inside the same `pushtag` would repeat the tag. Name it with `--strip-tag alice`
 
 Silences transactions that another account's ledger already records.
 
-When you import a joint account, a transfer from a personal account appears in
-both feeds. If the personal account's import already recorded it, the joint
-account's copy would double-count it. `guess-postings-comment` prefixes those
-transactions with `;`, so they stay in the file for reference but Beancount
-ignores them.
+A transfer between two accounts cannot appear in both accounts, but, when reading an account file, it can
+be helpful to note when and where another account is acting upon this account.
+`guess-postings-comment` prefixes targeted transactions with `;`, so they can stay in the file for your reference but not impact the ledger.
 
 ```
 guess-postings --training main.beancount /tmp/joint.beancount \
@@ -107,4 +106,5 @@ uv run ruff check . && uv run ruff format --check .
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+GPL-2.0-only, the same as Beancount. See
+[LICENSE](https://github.com/johnmee/beancount-guess-postings/blob/main/LICENSE).
