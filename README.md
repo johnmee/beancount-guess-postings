@@ -29,7 +29,7 @@ It works with the output of any importer, and was written alongside
 pip install beancount-guess-postings
 ```
 
-Python 3.10 or newer, and Beancount 3.
+Python 3.11 or newer, and Beancount 3.
 
 ## `guess-postings`
 
