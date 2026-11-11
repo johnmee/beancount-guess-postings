@@ -21,7 +21,9 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Office/Business :: Financial :: Accounting",
+    "Typing :: Typed",
 ]
 dependencies = [
     "beancount>=3.2.3",
@@ -31,14 +33,16 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/johnmee/beancount-guess-postings"
+Repository = "https://github.com/johnmee/beancount-guess-postings"
 Issues = "https://github.com/johnmee/beancount-guess-postings/issues"
+Changelog = "https://github.com/johnmee/beancount-guess-postings/blob/main/CHANGELOG.md"
 
 [project.scripts]
 guess-postings = "beancount_guess_postings.cli:fill_cli"
-guess-postings-comment = "beancount_guess_postings.cli:comment_cli"
 
 [dependency-groups]
 dev = [
+    "mypy>=2.4.1",
     "pytest>=8",
     "ruff>=0.17.3",
 ]
@@ -46,9 +50,43 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/beancount_guess_postings"]
 
+[tool.hatch.build.targets.sdist]
+# The source, its tests and its documents; not the repository's own tooling.
+include = ["/src", "/tests", "/README.md", "/CHANGELOG.md", "/LICENSE"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# A warning nobody expected is a failure.
+filterwarnings = ["error"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+# Beancount ships type hints but has not annotated all of its printer.
+untyped_calls_exclude = ["beancount"]
 
 [tool.ruff.lint]
-# On top of Ruff's defaults: import sorting, and bugbear's likely-bug checks.
-extend-select = ["I", "B"]
+select = [
+    "E", "W", "F",  # pycodestyle and pyflakes
+    "I",            # import sorting
+    "N",            # naming
+    "D",            # docstrings
+    "ANN",          # annotations on every parameter and return
+    "B",            # bugbear's likely bugs
+    "C4",           # comprehensions
+    "PT",           # pytest style
+    "PTH",          # pathlib over os.path
+    "RET",          # return statements
+    "SIM",          # simplifications
+    "UP",           # syntax the minimum Python makes redundant
+    "RUF",          # Ruff's own
+]
+# An __init__ is documented by its class.
+ignore = ["D107"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# A test's name is its documentation.
+"tests/*" = ["D"]

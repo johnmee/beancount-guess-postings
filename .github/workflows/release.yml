@@ -1,0 +1,31 @@
+name: Release
+
+# Pushing a tag like v0.1.0 tests, builds and publishes that version to PyPI.
+# Publishing uses PyPI Trusted Publishing: no token is stored anywhere. PyPI
+# must list this repository, this workflow file (release.yml) and the "pypi"
+# environment as a trusted publisher for the project.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Check the tag matches the version in pyproject.toml
+        run: test "v$(uv version --short)" = "$GITHUB_REF_NAME"
+      - run: uv build
+      - run: uv publish

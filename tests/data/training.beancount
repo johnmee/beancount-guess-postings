@@ -1,3 +1,15 @@
+2025-01-01 open Assets:Bank:Alice-Everyday
+2025-01-01 open Assets:Bank:Bob-Everyday
+2025-01-01 open Equity:Opening-Balances
+2025-01-01 open Expenses:Food:Alcohol
+2025-01-01 open Expenses:Food:Coffee
+2025-01-01 open Expenses:Food:Eatout
+2025-01-01 open Expenses:Transport:Public
+
+2025-01-01 * "Opening balance"
+  Assets:Bank:Alice-Everyday  128.50 AUD
+  Equity:Opening-Balances
+
 pushtag #alice
 
 2025-01-02 * "Example Cafe" "EXAMPLE CAFE, SYDNEY"   ;lunch with a friend
