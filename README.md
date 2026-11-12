@@ -29,7 +29,12 @@ It works with the output of any importer, and was written alongside
 pip install beancount-guess-postings
 ```
 
-Python 3.11 or newer, and Beancount 3.
+Python 3.11 or newer, and Beancount 3. For the [beangulp hook](#as-a-beangulp-hook),
+install the `beangulp` extra, which brings beangulp 0.2 or later:
+
+```
+pip install 'beancount-guess-postings[beangulp]'
+```
 
 ## `guess-postings`
 
@@ -37,6 +42,10 @@ Python 3.11 or newer, and Beancount 3.
 Usage: guess-postings [OPTIONS] INFILE
 
   Complete the postings of the transactions in INFILE.
+
+  Each transaction is fuzzy-matched against the transactions in the ledger
+  that post to the same account, and the postings and tags of the best match
+  are copied across. The result goes to standard output.
 
 Options:
   -l, --ledger PATH    Beancount file whose past transactions the guesses are
@@ -49,9 +58,6 @@ Options:
                        matched past transaction has it. Repeatable. Useful
                        when a pushtag in the ledger file already applies the
                        tag.
-  --mute ACCOUNT       Comment out every transaction that, once completed,
-                       posts to this account. Repeatable. Useful for transfers
-                       that another account's file already records.
   --version            Show the version and exit.
   -h, --help           Show this message and exit.
 ```
@@ -84,7 +90,9 @@ How it decides:
   be more cautious; lower it to complete more.
 - If `INFILE` has no transactions at all (say every row was a duplicate), the
   output is whatever else was in the file, such as `balance` directives, and
-  nothing at all if there was nothing else.
+  nothing at all if there was nothing else. Comments in `INFILE`, such as the
+  duplicates beangulp commented out, are not kept: use the beangulp hook below
+  if you want them.
 - If `INFILE` is not valid Beancount, the errors go to standard error, nothing
   is output, and the exit status is 1. Errors in the ledger only draw a
   one-line warning.
@@ -120,25 +128,45 @@ carries `#alice`. Copying that onto a new entry that will itself be written
 inside the same `pushtag` would repeat the tag. Name it with `--strip-tag alice`
 (a leading `#` is fine) and it is left off the completed entries.
 
-### Muting accounts with `--mute`
+## As a beangulp hook
 
-Silences transactions that another account's file already records.
+`guess-postings` reads beangulp's printed output back in, which loses its
+comments, including the `; duplicate of` rows. Run as a beangulp import hook
+instead, it completes the entries before beangulp prints them, so the
+duplicates are completed too and still come out commented:
 
-A transfer between two accounts cannot appear in both accounts, but, when reading an account file, it can
-be helpful to note when and where another account is acting upon this account.
-`--mute` prefixes every line of the targeted transactions with `;`, so they can stay in the file for your reference but not impact the ledger.
+```python
+from beangulp import Ingest
+from beancount_guess_postings import hook
+
+Ingest(
+    [MyBankImporter("Assets:Bank:Joint")],
+    hooks=[hook(threshold=86, strip_tags=["alice"], mute=["Assets:Bank:Alice-Upbank"])],
+)()
+```
 
 ```
-guess-postings --ledger main.beancount \
-    --mute Assets:Bank:Alice-Upbank --mute Assets:Bank:Bob-Upbank \
-    /tmp/joint.beancount >> joint-2026.beancount
+python import.py extract -e main.beancount statement.csv >> joint-2026.beancount
 ```
 
-Each `--mute` takes one account; repeat it for more. A transaction is commented
-out when, **after its postings have been guessed**, one of them is to exactly
-that account. `Assets:Bank:Up` does not match `Assets:Bank:Up-Savings`; a
-mention in a narration never matches; and `balance` directives are never
-touched.
+It learns from the ledger given to `extract -e`, so pass one. It learns only
+from that ledger, never from the other entries being imported. It needs
+beangulp 0.2 or later, which marks duplicates before it runs the hooks.
+
+### Muting transfers with `mute`
+
+A transfer between two of your accounts shows up in both banks' downloads, but
+it should be booked once. `mute` names the accounts whose own files book it. A
+transaction that, **once its postings have been guessed**, posts to one of them
+is marked as a duplicate, so beangulp prints it commented out: it stays in the
+file for reference but beancount ignores it. That works whichever bank you
+import first. If the other bank's file already has it, beangulp has marked it a
+duplicate already.
+
+The account has to match exactly: `Assets:Bank:Up` does not match
+`Assets:Bank:Up-Savings`. A mention in a narration never matches, and `balance`
+directives are never marked. A transfer whose guess falls below the threshold is
+not muted. It comes out with only its one posting, which `bean-check` reports.
 
 ## From Python
 
@@ -151,13 +179,14 @@ entries = fill(
     threshold=86,
     strip_tags=["alice"],
 )
-text = render(entries, mute=["Assets:Bank:Alice-Upbank"])
+text = render(entries)
 ```
 
 - `fill` returns every directive of the file, in order, as Beancount entries,
   with the transactions that found a match completed. It prints nothing.
-- `render` turns entries into Beancount text, commenting out the transactions
-  that post to a muted account.
+- `render` turns entries into Beancount text.
+- `complete(importing, existing, ...)` does what `fill` does, but on entries
+  already in memory. `hook(...)` wraps it for beangulp (see above).
 - `fill` raises `ParseError` if the file to complete is not valid Beancount,
   and issues a `LedgerWarning` if the ledger has errors.
 - `mimic`, `best_match` and `build_key` are the steps `fill` is built from.

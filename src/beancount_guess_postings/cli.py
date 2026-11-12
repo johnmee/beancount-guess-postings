@@ -60,22 +60,12 @@ def _existing_ledger(ctx: click.Context, param: click.Parameter, value: str) -> 
     "transaction has it. Repeatable. Useful when a pushtag in the ledger file "
     "already applies the tag.",
 )
-@click.option(
-    "--mute",
-    "mute",
-    multiple=True,
-    metavar="ACCOUNT",
-    help="Comment out every transaction that, once completed, posts to this "
-    "account. Repeatable. Useful for transfers that another account's file "
-    "already records.",
-)
 @click.version_option(package_name="beancount-guess-postings")
 @click.argument("infile", type=click.Path(exists=True, dir_okay=False))
 def fill_cli(
     ledger: str,
     threshold: int,
     strip_tags: tuple[str, ...],
-    mute: tuple[str, ...],
     infile: str,
 ) -> None:
     """Complete the postings of the transactions in INFILE.
@@ -106,4 +96,4 @@ def fill_cli(
             )
 
     # UTF-8 whatever the locale, as beancount's own printer writes.
-    sys.stdout.buffer.write(render(entries, mute).encode("utf-8"))
+    sys.stdout.buffer.write(render(entries).encode("utf-8"))

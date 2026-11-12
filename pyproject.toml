@@ -31,6 +31,11 @@ dependencies = [
     "rapidfuzz>=3.9",
 ]
 
+[project.optional-dependencies]
+# The import hook. It imports nothing from beangulp, but needs 0.2 or later,
+# which marks duplicates before it runs the hooks.
+beangulp = ["beangulp>=0.2"]
+
 [project.urls]
 Homepage = "https://github.com/johnmee/beancount-guess-postings"
 Repository = "https://github.com/johnmee/beancount-guess-postings"

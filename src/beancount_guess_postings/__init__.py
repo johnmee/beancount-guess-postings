@@ -4,11 +4,14 @@ from importlib.metadata import PackageNotFoundError, version
 
 from .core import (
     DEFAULT_THRESHOLD,
+    DUPLICATE,
     LedgerWarning,
     ParseError,
     best_match,
     build_key,
+    complete,
     fill,
+    hook,
     mimic,
     render,
 )
@@ -20,12 +23,15 @@ except PackageNotFoundError:  # running from a source tree that was never instal
 
 __all__ = [
     "DEFAULT_THRESHOLD",
+    "DUPLICATE",
     "LedgerWarning",
     "ParseError",
     "__version__",
     "best_match",
     "build_key",
+    "complete",
     "fill",
+    "hook",
     "mimic",
     "render",
 ]

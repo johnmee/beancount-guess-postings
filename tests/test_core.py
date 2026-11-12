@@ -1,22 +1,27 @@
 import datetime
 import os
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from importlib.metadata import entry_points
 from pathlib import Path
 
 import pytest
+from beancount import loader
 from beancount.core import amount, data
 from beancount.core.number import D
+from beancount.parser import parser
 from click.testing import CliRunner
 
 from beancount_guess_postings import (
     DEFAULT_THRESHOLD,
+    DUPLICATE,
     LedgerWarning,
     ParseError,
     __version__,
     best_match,
     build_key,
+    complete,
     fill,
+    hook,
     mimic,
     render,
 )
@@ -27,14 +32,9 @@ TRAINING = str(DATA / "training.beancount")
 INCOMING = str(DATA / "incoming.beancount")
 
 
-def _filled(
-    ledger: str,
-    infile: str,
-    threshold: int = DEFAULT_THRESHOLD,
-    mute: str | Iterable[str] = (),
-) -> str:
+def _filled(ledger: str, infile: str, threshold: int = DEFAULT_THRESHOLD) -> str:
     """The completed import as text, the way the command writes it."""
-    return render(fill(ledger, infile, threshold), mute)
+    return render(fill(ledger, infile, threshold))
 
 
 def _entry(
@@ -252,58 +252,6 @@ def _blocks(output: str) -> dict[str, list[str]]:
     return {block.splitlines()[0]: block.splitlines() for block in blocks}
 
 
-def _is_commented(lines: list[str]) -> bool:
-    return all(line.startswith(";") for line in lines)
-
-
-def test_render_mutes_transactions_that_post_to_a_muted_account() -> None:
-    # The account is not in the import file: it arrives with the guess.
-    blocks = _blocks(_filled(TRAINING, INCOMING, mute=["Expenses:Food:Eatout"]))
-    cafe = next(lines for first, lines in blocks.items() if "Example Cafe" in first)
-    transit = next(lines for first, lines in blocks.items() if "Metro Transit" in first)
-    assert _is_commented(cafe)
-    assert any("Expenses:Food:Eatout" in line for line in cafe)
-    assert not any(line.startswith(";") for line in transit)
-
-
-def test_render_mutes_only_an_account_named_in_full() -> None:
-    entries = fill(TRAINING, INCOMING)
-    muted = render(entries, mute=["Expenses:Food", "Expenses:Food:Eat"])
-    assert muted == render(entries)
-
-
-def test_render_never_mutes_a_balance_directive() -> None:
-    blocks = _blocks(_filled(TRAINING, INCOMING, mute=["Assets:Bank:Alice-Everyday"]))
-    balances = [lines for first, lines in blocks.items() if " balance " in first]
-    transactions = [
-        lines for first, lines in blocks.items() if " balance " not in first
-    ]
-    assert balances
-    assert not any(_is_commented(lines) for lines in balances)
-    assert transactions
-    assert all(_is_commented(lines) for lines in transactions)
-
-
-def test_cli_mutes_each_account_it_is_given() -> None:
-    result = CliRunner().invoke(
-        fill_cli,
-        [
-            "--ledger",
-            TRAINING,
-            "--mute",
-            "Expenses:Food:Eatout",
-            "--mute",
-            "Expenses:Transport:Public",
-            INCOMING,
-        ],
-    )
-    assert result.exit_code == 0
-    commented = [line for line in result.output.splitlines() if line.startswith(";")]
-    assert any("Expenses:Food:Eatout" in line for line in commented)
-    assert any("Expenses:Transport:Public" in line for line in commented)
-    assert not any("Expenses:Food:Alcohol" in line for line in commented)
-
-
 def test_cli_strips_the_tags_it_is_told_to() -> None:
     # The matched past entry is tagged #alice by its pushtag, as is the incoming
     # one; stripping removes it from the completed entry.
@@ -500,12 +448,6 @@ def test_mimic_takes_a_lone_tag_as_one_tag_not_its_letters() -> None:
     assert mimic(new, past, strip_tags="alice").tags == {"a", "bob"}
 
 
-def test_render_takes_a_lone_account_to_mute_as_one_account() -> None:
-    blocks = _blocks(_filled(TRAINING, INCOMING, mute="Expenses:Food:Eatout"))
-    cafe = next(lines for first, lines in blocks.items() if "Example Cafe" in first)
-    assert _is_commented(cafe)
-
-
 @pytest.mark.parametrize("threshold", [-1, 101])
 def test_fill_rejects_a_threshold_outside_0_to_100(threshold: int) -> None:
     with pytest.raises(ValueError, match="0 to 100"):
@@ -584,3 +526,115 @@ def test_cli_answers_to_a_short_help_option() -> None:
     result = CliRunner().invoke(fill_cli, ["-h"], prog_name=fill_cli.name)
     assert result.exit_code == 0
     assert "Usage: guess-postings [OPTIONS] INFILE" in result.output
+
+
+def _extracted() -> list[tuple[str, list[data.Directive], str, object]]:
+    """INCOMING as beangulp hands it to a hook, from one document."""
+    entries, errors, _ = parser.parse_file(INCOMING)
+    assert not errors
+    return [("bank.csv", entries, "Assets:Bank:Alice-Everyday", None)]
+
+
+def _ledger() -> list[data.Directive]:
+    return loader.load_file(TRAINING)[0]
+
+
+def _by_payee(
+    extracted: list[tuple[str, list[data.Directive], str, object]],
+) -> dict[str | None, data.Transaction]:
+    [(_, entries, _, _)] = extracted
+    return {e.payee: e for e in entries if isinstance(e, data.Transaction)}
+
+
+def _existing(
+    extracted: list[tuple[str, list[data.Directive], str, object]],
+) -> list[data.Directive]:
+    """The existing entries beangulp hands a hook: the ledger, then every entry
+    it has extracted (beangulp 0.2 extends them before it runs the hooks)."""
+    return _ledger() + [e for _, entries, _, _ in extracted for e in entries]
+
+
+def _run(
+    guess: Callable[..., list[tuple[str, list[data.Directive], str, object]]],
+    extracted: list[tuple[str, list[data.Directive], str, object]] | None = None,
+) -> list[tuple[str, list[data.Directive], str, object]]:
+    """Run the hook the way beangulp does, on INCOMING by default."""
+    extracted = _extracted() if extracted is None else extracted
+    return guess(extracted, _existing(extracted))
+
+
+def test_hook_completes_like_fill() -> None:
+    extracted = _extracted()
+    [(name, entries, account, importer)] = hook()(extracted, _existing(extracted))
+    assert (name, account, importer) == ("bank.csv", "Assets:Bank:Alice-Everyday", None)
+    assert render(entries) == _filled(TRAINING, INCOMING)
+
+
+def test_hook_learns_from_the_ledger_not_from_the_import() -> None:
+    # An importer that books the cafe itself, in an earlier document.
+    booked = _entry(
+        [],
+        [
+            _posting("Assets:Bank:Alice-Everyday", "-9.00"),
+            _posting("Expenses:Food:Coffee", "9.00"),
+        ],
+        "Example Cafe",
+        "EXAMPLE CAFE, SYDNEY",
+    )
+    extracted = _extracted()
+    extracted.insert(0, ("other.csv", [booked], "Assets:Bank:Alice-Everyday", None))
+    done = hook()(extracted, _existing(extracted))
+    cafe = _by_payee(done[1:])["Example Cafe"]
+    assert {p.account for p in cafe.postings} == {
+        "Assets:Bank:Alice-Everyday",
+        "Expenses:Food:Eatout",
+    }
+
+
+def test_hook_marks_a_copy_and_leaves_the_extracted_entry_alone() -> None:
+    extracted = _extracted()
+    existing = _existing(extracted)
+    hook(mute="Assets:Bank:Alice-Everyday")(extracted, existing)
+    assert not any(DUPLICATE in e.meta for e in existing)
+
+
+def test_hook_marks_a_transaction_posting_to_a_muted_account_as_a_duplicate() -> None:
+    # The account is not in the import: it arrives with the guess.
+    done = _by_payee(_run(hook(mute=["Expenses:Food:Eatout"])))
+    assert done["Example Cafe"].meta[DUPLICATE] is True
+    assert "Expenses:Food:Eatout" in {p.account for p in done["Example Cafe"].postings}
+    assert DUPLICATE not in done["Metro Transit"].meta
+
+
+def test_hook_mutes_only_an_account_named_in_full() -> None:
+    done = _by_payee(_run(hook(mute="Expenses:Food")))
+    assert not any(DUPLICATE in e.meta for e in done.values())
+
+
+def test_hook_never_marks_a_balance_directive() -> None:
+    muted = _run(hook(mute="Assets:Bank:Alice-Everyday"))
+    [(_, entries, _, _)] = muted
+    assert all(
+        (DUPLICATE in e.meta) == isinstance(e, data.Transaction) for e in entries
+    )
+
+
+def test_hook_completes_a_duplicate_and_keeps_what_it_duplicates() -> None:
+    extracted = _extracted()
+    [(_, entries, _, _)] = extracted
+    cafe = next(e for e in entries if getattr(e, "payee", None) == "Example Cafe")
+    original = _ledger()[0]
+    cafe.meta[DUPLICATE] = original
+    done = _by_payee(_run(hook(mute="Expenses:Food:Eatout"), extracted))
+    assert done["Example Cafe"].meta[DUPLICATE] is original
+    assert len(done["Example Cafe"].postings) == 2
+
+
+def test_hook_rejects_a_threshold_outside_0_to_100() -> None:
+    with pytest.raises(ValueError, match="0 to 100"):
+        hook(threshold=101)
+
+
+def test_complete_works_on_entries_in_memory() -> None:
+    entries, _, _ = parser.parse_file(INCOMING)
+    assert render(complete(entries, _ledger())) == _filled(TRAINING, INCOMING)

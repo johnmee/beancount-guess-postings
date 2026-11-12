@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- `hook(threshold, strip_tags, mute)` runs `guess-postings` as a beangulp import
+  hook, before beangulp prints, so the duplicates it comments out are kept and
+  completed too. It needs beangulp 0.2 or later: install the `beangulp` extra.
+- `mute` (hook only) marks transactions that, once completed, post to one of the
+  named accounts as duplicates, so beangulp prints them commented out.
+- `complete(importing, existing, ...)` completes entries already in memory;
+  `fill` is now built on it.
+- **Breaking:** `--mute` and `render`'s `mute` argument are removed. Use the
+  hook's `mute` instead.
+
 ## 0.1.0
 
 First release, extracted from `aussie-bean-tools`.
